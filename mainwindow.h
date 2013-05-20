@@ -38,7 +38,6 @@ private slots:
     void goRoot();
     void goParent();
     void goBookmark();
-    void reboot();
     void aboutProgram();
 
 private:

@@ -191,10 +191,6 @@ void MainWindow::emitDeviceRemoved(){
     emit deviceRemoved();
 }
 
-void MainWindow::reboot(){
-    QMessageBox::warning(this, tr("Warning"), tr("%1 is not implemented yet!").arg(__func__));
-}
-
 void MainWindow::aboutProgram(){
     QMessageBox::information(this, tr("About"), tr("This program is used to access files on jailbroken iPhone/iPod/iPad "));
 }
@@ -211,14 +207,12 @@ MainWindow::MainWindow(QWidget *parent)
     QMenuBar *menuBar = new QMenuBar;
     QMenu *fileMenu = new QMenu(tr("File"));
     QAction *importAction = fileMenu->addAction(tr("Import file"));
-    QAction *rebootAction = fileMenu->addAction(tr("Reboot"));
     fileMenu->addSeparator();
     QAction *exitAction = fileMenu->addAction(tr("Exit"));
     menuBar->addMenu(fileMenu);
     setMenuBar(menuBar);
 
     connect(importAction, SIGNAL(triggered()), this, SLOT(importFile()));
-    connect(rebootAction, SIGNAL(triggered()), this, SLOT(reboot()));
     connect(exitAction, SIGNAL(triggered()), this, SLOT(close()));
 
     QMenu *viewMenu = new QMenu(tr("View"));
