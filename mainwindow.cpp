@@ -149,22 +149,24 @@ void MainWindow::setCurrentPath(const QString &path){
     list->clear();
     int i;
     for(i=0; filenames[i]; i++){
-        if(qstrcmp(filenames[i], ".") == 0)
+        QString filename = filenames[i];
+
+        if(filename == ".")
             continue;
 
-        if(qstrcmp(filenames[i], "..") == 0){
+        if(filename == ".."){
             new QListWidgetItem(QIcon("icon/folder.png"), "..", list);
             continue;
         }
 
-        if(filenames[i][0] == '.' && !showHidden->isChecked())
+        if(filename.startsWith(QChar('.')) && !showHidden->isChecked())
             continue;
 
         FileInfo info;
-        if(getFileInfo(filenames[i], &info)){
+        if(getFileInfo(filename, &info)){
             new QListWidgetItem(QIcon(getIconPixmap(&info)), info.filename, list);
         }else{
-            qDebug() << "failed to get info of " << filenames[i];
+            showWarning(tr("Failed to get file information of %1").arg(filename));
         }
     }
 }
