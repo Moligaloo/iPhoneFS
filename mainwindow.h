@@ -39,6 +39,7 @@ private slots:
     void goParent();
     void goBookmark();
     void aboutProgram();
+    void showApplications();
 
 private:
     idevice_t device;
@@ -59,6 +60,7 @@ private:
     QString getAbsoulteFilePath(const QString &filename) const;
     void exportFile(FileInfo *info);
     void setCurrentPath(const QString &path);
+    void showWarning(const QString &message);
 
 signals:
     void deviceAdded();

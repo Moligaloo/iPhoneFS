@@ -12,6 +12,9 @@
 #include <QPainter>
 #include <QInputDialog>
 #include <QApplication>
+#include <QStringListModel>
+
+#include "libimobiledevice/installation_proxy.h"
 
 struct FileInfo{
     FileInfo(){
@@ -199,6 +202,69 @@ void MainWindow::subscribeEvent(){
     idevice_event_subscribe(callback, this);
 }
 
+void MainWindow::showWarning(const QString &message){
+    QMessageBox::warning(this, tr("Warning"), message);
+}
+
+void MainWindow::showApplications(){
+    uint16_t port = 0u;
+
+    const char *service = "com.apple.mobile.installation_proxy";
+    lockdownd_start_service(lockdownd, service , &port);
+    if(port == 0){
+        showWarning(tr("Start service %1 failed!").arg(service));
+        return;
+    }
+
+    instproxy_client_t client = NULL;
+    instproxy_client_new(device, port, &client);
+
+    if(client == NULL){
+        showWarning(tr("Create installation proxy failed!"));
+        return;
+    }
+
+    plist_t options = instproxy_client_options_new();
+    instproxy_client_options_add(options, "ApplicationType", "User", NULL);
+    plist_t result = NULL;
+    instproxy_browse(client, options,  &result);
+    instproxy_client_options_free(options);
+
+    if(result == NULL){
+        showWarning(tr("Find apps failed"));
+        return;
+    }
+
+    int n = plist_array_get_size(result);
+
+    qDebug() << n;
+    QStringList apps;
+    for(int i=0; i<n; i++){
+        plist_t app = plist_array_get_item(result, i);
+        if(app == NULL)
+            continue;
+
+        plist_t displayName = plist_dict_get_item(app, "CFBundleDisplayName");
+        if(displayName == NULL)
+            continue;
+
+        char *displayNameString = NULL;
+        plist_get_string_val(displayName, &displayNameString);
+
+
+        apps << displayNameString;
+        free(displayNameString);
+    }
+
+    instproxy_client_free(client);
+    plist_free(result);
+
+    QListView *list = new QListView;
+    list->setModel(new QStringListModel(apps, list));
+
+    list->show();
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -218,6 +284,10 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *viewMenu = new QMenu(tr("View"));
     showHidden = viewMenu->addAction(tr("Show hidden"));
     showHidden->setCheckable(true);
+
+    QAction *showAppsAction = viewMenu->addAction(tr("Show applications"));
+    connect(showAppsAction, SIGNAL(triggered()), this, SLOT(showApplications()));
+
     menuBar->addMenu(viewMenu);
 
     connect(showHidden, SIGNAL(toggled(bool)), this, SLOT(reload()));
