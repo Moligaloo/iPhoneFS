@@ -102,7 +102,7 @@ bool MainWindow::startLockdownd(){
 }
 
 bool MainWindow::startAFC2Service(uint16_t *afcPort){
-    return lockdownd_start_service(lockdownd, "com.apple.afc2", afcPort) == LOCKDOWN_E_SUCCESS;
+    return lockdownd_start_service(lockdownd, "com.apple.afc", afcPort) == LOCKDOWN_E_SUCCESS;
 }
 
 bool MainWindow::startAFC2Client(uint16_t afcPort){
@@ -239,7 +239,6 @@ void MainWindow::showApplications(){
 
     int n = plist_array_get_size(result);
 
-    qDebug() << n;
     QStringList apps;
     for(int i=0; i<n; i++){
         plist_t app = plist_array_get_item(result, i);
@@ -253,9 +252,16 @@ void MainWindow::showApplications(){
         char *displayNameString = NULL;
         plist_get_string_val(displayName, &displayNameString);
 
+        plist_t appid = plist_dict_get_item(app, "CFBundleIdentifier");
+        if(appid == NULL)
+            continue;
 
-        apps << displayNameString;
+        char *appidString = NULL;
+        plist_get_string_val(appid, &appidString);
+
+        apps << QString("%1 (%2)").arg(displayNameString).arg(appidString);
         free(displayNameString);
+        free(appidString);
     }
 
     instproxy_client_free(client);
@@ -372,18 +378,19 @@ void MainWindow::goParent(){
 void MainWindow::showContextMenu(const QPoint &pos){
     QList<QListWidgetItem *> items = list->selectedItems();
 
-    if(!items.isEmpty()){
-        QMenu *menu = new QMenu(list);
+    QMenu *menu = new QMenu(list);
+    if(items.isEmpty()){
+        QAction *makeDirectoryAction = menu->addAction(tr("Make Directory ..."));
+         connect(makeDirectoryAction, SIGNAL(triggered()), this, SLOT(makeDirectory()));
+    }else{
         QAction *exportAction = menu->addAction(tr("Export"));
         QAction *removeAction = menu->addAction(tr("Remove"));
-        QAction *makeDirectoryAction = menu->addAction(tr("Make Directory ..."));
 
         connect(exportAction, SIGNAL(triggered()), this, SLOT(exportFile()));
         connect(removeAction, SIGNAL(triggered()), this, SLOT(removeFile()));
-        connect(makeDirectoryAction, SIGNAL(triggered()), this, SLOT(makeDirectory()));
-
-        menu->popup(list->mapToGlobal(pos));
     }
+
+    menu->popup(list->mapToGlobal(pos));
 }
 
 QString MainWindow::getAbsoulteFilePath(const QString &filename) const{
@@ -484,7 +491,12 @@ void MainWindow::removeFile(){
 }
 
 void MainWindow::makeDirectory(){
-    QString dirname = QInputDialog::getText(this, tr("Make directory"), tr("Please input the directory name:"), QLineEdit::Normal, tr("Directory"));
+    QString dirname = QInputDialog::getText(this,
+                                            tr("Make directory"),
+                                            tr("Please input the directory name:"),
+                                            QLineEdit::Normal,
+                                            tr("NewFolder"));
+
     if(!dirname.isEmpty()){
         QString dirpath = getAbsoulteFilePath(dirname);
         afc_error_t result = afc_make_directory(afc, dirpath.toUtf8().data());
