@@ -5,10 +5,12 @@
 #include <QListWidget>
 #include <QMap>
 #include <QLabel>
+#include <QProgressDialog>
 
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
 #include <libimobiledevice/afc.h>
+#include "libimobiledevice/installation_proxy.h"
 
 struct FileInfo;
 
@@ -20,9 +22,13 @@ public:
     MainWindow(QWidget *parent = 0);
     void emitDeviceAdded();
     void emitDeviceRemoved();
+    void emitPercentGot(int percent);
     void subscribeEvent();
     void showMessage(const QString &msg);
     ~MainWindow();
+
+protected:
+    void closeEvent(QCloseEvent *);
 
 private slots:
     void onDeviceAdded();
@@ -40,11 +46,14 @@ private slots:
     void goBookmark();
     void aboutProgram();
     void showApplications();
+    void installApp();
+    void archiveApp();
 
 private:
     idevice_t device;
     lockdownd_client_t lockdownd;
     afc_client_t afc;
+    instproxy_client_t instproxy;
 
     QLabel *pathLabel;
     QListWidget *list;
@@ -61,10 +70,15 @@ private:
     void exportFile(FileInfo *info);
     void setCurrentPath(const QString &path);
     void showWarning(const QString &message);
+    void showInfo(const QString &message);
+    bool setupInstproxy();
+    void copyFile(const QString &pcPath, const QString &devicePath);
+    plist_t getInstallProxyOptions(const QString &metafile, const QString &sinffile);
 
 signals:
     void deviceAdded();
     void deviceRemoved();
+    void percentGot(int percent);
 };
 
 #endif // MAINWINDOW_H
