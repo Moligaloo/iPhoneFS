@@ -693,8 +693,7 @@ void MainWindow::importFile(){
     QFileInfo info(filename);
     QString filepath = getAbsoulteFilePath(info.fileName());
 
-    CopyThread *thread = copyFile(filename, filepath);
-    connect(thread, SIGNAL(copySucceeded()), this, SLOT(reload()));
+    copyFile(filename, filepath);
 }
 
 void MainWindow::reload(){
