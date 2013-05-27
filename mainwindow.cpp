@@ -309,7 +309,7 @@ void MainWindow::installApp(){
 
     QFileInfo info(ipaFile);
     QString afc2Path = QString("/var/mobile/Media/PublicStaging/%1").arg(info.fileName());
-    copyFile(ipaFile, afc2Path)->setShouldInstall(true);
+    importFile(ipaFile, afc2Path)->setShouldInstall(true);
 }
 
 void MainWindow::installIPAFile(const QString &afcPath){
@@ -594,18 +594,18 @@ void MainWindow::onItemDoubleClicked(QListWidgetItem *item){
     }
 }
 
-CopyThread::CopyThread(afc_client_t afc, const QString &pcPath, const QString &devicePath)
+ImportThread::ImportThread(afc_client_t afc, const QString &pcPath, const QString &devicePath)
     :afc(afc), pcPath(pcPath), devicePath(devicePath), shouldInstall(false)
 {
 
 }
 
-QString CopyThread::afcPath() const{
+QString ImportThread::afcPath() const{
     QFileInfo info(pcPath);
     return QString("PublicStaging/%1").arg(info.fileName());
 }
 
-void CopyThread::run(){
+void ImportThread::run(){
     QFile file(pcPath);
     if(!file.open(QIODevice::ReadOnly)){
         emit copyFinished(1);
@@ -642,8 +642,8 @@ void CopyThread::run(){
     emit copyFinished(afc_file_close(afc, handle));
 }
 
-CopyThread *MainWindow::copyFile(const QString &pcPath, const QString &devicePath){
-    CopyThread *thread = new CopyThread(afc, pcPath, devicePath);
+ImportThread *MainWindow::importFile(const QString &pcPath, const QString &devicePath){
+    ImportThread *thread = new ImportThread(afc, pcPath, devicePath);
 
     progressLabel->setText(tr("Copy %1 to %2").arg(pcPath).arg(devicePath));
 
@@ -674,7 +674,7 @@ void MainWindow::onCopyFinished(int result){
     progressBar->hide();
 
 
-    CopyThread *thread = qobject_cast<CopyThread *>(sender());
+    ImportThread *thread = qobject_cast<ImportThread *>(sender());
     if(thread){
         if(thread->isShouldInstall())
             installIPAFile(thread->afcPath());
@@ -693,7 +693,7 @@ void MainWindow::importFile(){
     QFileInfo info(filename);
     QString filepath = getAbsoulteFilePath(info.fileName());
 
-    copyFile(filename, filepath);
+    importFile(filename, filepath);
 }
 
 void MainWindow::reload(){

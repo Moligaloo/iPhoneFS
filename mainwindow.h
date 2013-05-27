@@ -14,7 +14,7 @@
 #include "libimobiledevice/installation_proxy.h"
 
 struct FileInfo;
-class CopyThread;
+class ImportThread;
 
 class MainWindow : public QMainWindow
 {
@@ -81,7 +81,7 @@ private:
     void showWarning(const QString &message);
     void showInfo(const QString &message);
     bool setupInstproxy();
-    CopyThread *copyFile(const QString &pcPath, const QString &devicePath);
+    ImportThread *importFile(const QString &pcPath, const QString &devicePath);
     void installIPAFile(const QString &afcPath);
 
 signals:
@@ -108,11 +108,11 @@ signals:
     void finished(int result);
 };
 
-class CopyThread: public QThread{
+class ImportThread: public QThread{
     Q_OBJECT
 
 public:
-    CopyThread(afc_client_t afc, const QString &pcPath, const QString &devicePath);
+    ImportThread(afc_client_t afc, const QString &pcPath, const QString &devicePath);
 
     void setShouldInstall(bool should){
         shouldInstall = should;
