@@ -197,10 +197,6 @@ void MainWindow::emitDeviceRemoved(){
     emit deviceRemoved();
 }
 
-void MainWindow::emitPercentGot(int percent){
-    emit percentGot(percent);
-}
-
 void MainWindow::aboutProgram(){
     QMessageBox::information(this, tr("About"), tr("This program is used to access files on jailbroken iPhone/iPod/iPad "));
 }
@@ -234,7 +230,20 @@ bool MainWindow::setupInstproxy(){
     return instproxy != NULL;
 }
 
-plist_t MainWindow::getInstallProxyOptions(const QString &metafile, const QString &sinffile){
+InstallThread::InstallThread(instproxy_client_t client, const QString &afcPath):
+    client(client), afcPath(afcPath)
+{
+}
+
+void InstallThread::run(){
+    plist_t options = getInstallProxyOptions("meta", "sinf");
+    int result = instproxy_install(client, afcPath.toUtf8().data(), options, NULL, NULL);
+    instproxy_client_options_free(options);
+
+    emit finished(result);
+}
+
+plist_t InstallThread::getInstallProxyOptions(const QString &metafile, const QString &sinffile){
     plist_t sinf = NULL, meta = NULL;
 
     QFile file1(metafile);
@@ -262,18 +271,27 @@ plist_t MainWindow::getInstallProxyOptions(const QString &metafile, const QStrin
         return NULL;
 }
 
-static void UpdateProgress(const char *operation, plist_t status, void *data){
-    if(operation && status){
-        plist_t npercent = plist_dict_get_item(status, "PercentComplete");
+void MainWindow::onInstallStarted(){
+    progressLabel->setText(tr("Install app"));
+    progressBar->setRange(0, 0);
+    progressBar->setValue(0);
 
-        if(npercent){
-            MainWindow *window = static_cast<MainWindow *>(data);
+    progressLabel->show();
+    progressBar->show();
+}
 
-            uint64_t percent;
-            plist_get_uint_val(npercent, &percent);
-            window->emitPercentGot(percent);
-        }
+void MainWindow::onInstallFinished(int result){
+    progressLabel->hide();
+    progressBar->hide();
+
+    if(result == INSTPROXY_E_SUCCESS){
+        showInfo(tr("Install success"));
+    }else{
+        showWarning(tr("Install failed! error code = %1").arg(result));
     }
+
+    InstallThread *thread = qobject_cast<InstallThread *>(sender());
+    thread->deleteLater();
 }
 
 void MainWindow::installApp(){
@@ -292,28 +310,14 @@ void MainWindow::installApp(){
     QFileInfo info(ipaFile);
     QString afc2Path = QString("/var/mobile/Media/PublicStaging/%1").arg(info.fileName());
     QString afcPath = QString("/PublicStaging/%1").arg(info.fileName());
-    copyFile(ipaFile, afc2Path);
+    if(!copyFile(ipaFile, afc2Path))
+        return;
 
-    QProgressDialog *dialog = new QProgressDialog(this);
+    InstallThread *thread = new InstallThread(instproxy, afcPath);
+    connect(thread, SIGNAL(started()), this, SLOT(onInstallStarted()));
+    connect(thread, SIGNAL(finished(int)), this, SLOT(onInstallFinished(int)));
 
-    connect(this, SIGNAL(percentGot(int)), dialog, SLOT(setValue(int)));
-
-    dialog->setWindowTitle(tr("Install"));
-    dialog->setLabelText(tr("Install app"));
-    dialog->setRange(0, 100);
-    dialog->setCancelButton(NULL);
-    dialog->show();
-
-    plist_t options = getInstallProxyOptions("meta", "sinf");
-    instproxy_error_t result = instproxy_install(instproxy, afcPath.toUtf8().data(), options, UpdateProgress, this);
-    dialog->close();
-    if(result == INSTPROXY_E_SUCCESS){
-        showInfo(tr("Install success"));
-    }else{
-        showWarning(tr("Install failed! error code = %1").arg(result));
-    }
-
-    instproxy_client_options_free(options);
+    thread->start();
 }
 
 void MainWindow::archiveApp(){
@@ -483,11 +487,16 @@ MainWindow::MainWindow(QWidget *parent)
     showMessage(tr("Waiting for device connection"));
 
     pathLabel = new QLabel;
+    progressLabel = new QLabel;
+    progressBar = new QProgressBar;
 
     QWidget *widget = new QWidget;
     QVBoxLayout *layout = new QVBoxLayout;
     layout->addWidget(pathLabel);
     layout->addWidget(list);
+    layout->addWidget(progressLabel);
+    layout->addWidget(progressBar);
+
     widget->setLayout(layout);
     setCentralWidget(widget);
 
@@ -498,6 +507,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(this, SIGNAL(deviceAdded()), this, SLOT(onDeviceAdded()));
     connect(this, SIGNAL(deviceRemoved()), this, SLOT(onDeviceRemoved()));
+
+    progressLabel->hide();
+    progressBar->hide();
 }
 
 void MainWindow::goBookmark(){
@@ -580,47 +592,42 @@ void MainWindow::onItemDoubleClicked(QListWidgetItem *item){
     }
 }
 
-void MainWindow::copyFile(const QString &pcPath, const QString &devicePath){
+bool MainWindow::copyFile(const QString &pcPath, const QString &devicePath){
+    QFile file(pcPath);
+    if(!file.open(QIODevice::ReadOnly))
+        return false;
+
     uint64_t handle = 0;
     afc_file_open(afc, devicePath.toUtf8().data(), AFC_FOPEN_WRONLY, &handle);
-
     if(handle == 0)
-        return;
+        return false;
 
-    QFile file(pcPath);    
-    if(file.open(QIODevice::ReadOnly)){
-        uint32_t bytes_written;
+    uint32_t bytes_written;
 
-        const int blockSize = 10 * 1024; // 10k
+    const int blockSize = 10 * 1024; // 10k
 
-        QProgressDialog *dialog = NULL;
+    if(file.size() > blockSize){
+        progressLabel->setText(tr("Copy file from %1 to %2").arg(pcPath).arg(devicePath));
+        progressBar->setRange(0, file.size()/blockSize);
 
-        if(file.size() > blockSize){
-            dialog = new QProgressDialog(
-                        tr("Copy file from %1 to %2").arg(pcPath).arg(devicePath),
-                        QString(),
-                        0,
-                        file.size() / blockSize,
-                        this);
-
-            dialog->setWindowTitle(tr("Copy"));
-            dialog->setWindowModality(Qt::WindowModal);
-            dialog->show();
-        }
-
-        for(int i=0; !file.atEnd(); i++){
-            if(dialog)
-                dialog->setValue(i);
-
-            QByteArray data = file.read(blockSize);
-            afc_file_write(afc, handle, data.data(), data.size(), &bytes_written);
-        }
-
-        if(dialog)
-            dialog->close();
+        progressLabel->show();
+        progressBar->show();
     }
 
-    afc_file_close(afc, handle);
+    for(int i=0; !file.atEnd(); i++){
+        if(progressBar->isVisible())
+            progressBar->setValue(i);
+
+        QByteArray data = file.read(blockSize);
+        afc_file_write(afc, handle, data.data(), data.size(), &bytes_written);
+    }
+
+    if(progressLabel->isVisible()){
+        progressLabel->hide();
+        progressBar->hide();
+    }
+
+    return afc_file_close(afc, handle) == AFC_E_SUCCESS;
 }
 
 void MainWindow::importFile(){
@@ -631,8 +638,8 @@ void MainWindow::importFile(){
     QFileInfo info(filename);
     QString filepath = getAbsoulteFilePath(info.fileName());
 
-    copyFile(filename, filepath);
-    reload();
+    if(copyFile(filename, filepath))
+        reload();
 }
 
 void MainWindow::reload(){
@@ -717,21 +724,15 @@ void MainWindow::showMessage(const QString &msg){
     statusBar()->showMessage(msg);
 }
 
-void MainWindow::closeEvent(QCloseEvent *e){
+void MainWindow::closeEvent(QCloseEvent *e)
+{
     QMainWindow::closeEvent(e);
 
-
-    qDebug() << __func__;
-
+    afc_client_free(afc);
+    instproxy_client_free(instproxy);
+    lockdownd_client_free(lockdownd);
+    idevice_free(device);
 
     qApp->quit();
 }
 
-MainWindow::~MainWindow()
-{
-    afc_client_free(afc);
-    if(instproxy)
-        instproxy_client_free(instproxy);
-    lockdownd_client_free(lockdownd);
-    idevice_free(device);
-}

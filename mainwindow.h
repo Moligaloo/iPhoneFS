@@ -5,7 +5,8 @@
 #include <QListWidget>
 #include <QMap>
 #include <QLabel>
-#include <QProgressDialog>
+#include <QProgressBar>
+#include <QThread>
 
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
@@ -22,10 +23,8 @@ public:
     MainWindow(QWidget *parent = 0);
     void emitDeviceAdded();
     void emitDeviceRemoved();
-    void emitPercentGot(int percent);
     void subscribeEvent();
     void showMessage(const QString &msg);
-    ~MainWindow();
 
 protected:
     void closeEvent(QCloseEvent *);
@@ -48,6 +47,8 @@ private slots:
     void showApplications();
     void installApp();
     void archiveApp();
+    void onInstallStarted();
+    void onInstallFinished(int result);
 
 private:
     idevice_t device;
@@ -57,6 +58,8 @@ private:
 
     QLabel *pathLabel;
     QListWidget *list;
+    QLabel *progressLabel;
+    QProgressBar *progressBar;
     QAction *showHidden;
 
     bool connectDevice();
@@ -72,13 +75,30 @@ private:
     void showWarning(const QString &message);
     void showInfo(const QString &message);
     bool setupInstproxy();
-    void copyFile(const QString &pcPath, const QString &devicePath);
-    plist_t getInstallProxyOptions(const QString &metafile, const QString &sinffile);
+    bool copyFile(const QString &pcPath, const QString &devicePath);
 
 signals:
     void deviceAdded();
     void deviceRemoved();
-    void percentGot(int percent);
+};
+
+class InstallThread: public QThread{
+    Q_OBJECT
+
+public:
+    InstallThread(instproxy_client_t client, const QString &afcPath);
+
+private:
+    instproxy_client_t client;
+    QString afcPath;
+
+    plist_t getInstallProxyOptions(const QString &metafile, const QString &sinffile);
+
+protected:
+    virtual void run();
+
+signals:
+    void finished(int result);
 };
 
 #endif // MAINWINDOW_H
