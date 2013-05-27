@@ -541,9 +541,11 @@ void MainWindow::showContextMenu(const QPoint &pos){
     }else{
         QAction *exportAction = menu->addAction(tr("Export"));
         QAction *removeAction = menu->addAction(tr("Remove"));
+        QAction *renameAction = menu->addAction(tr("Rename"));
 
         connect(exportAction, SIGNAL(triggered()), this, SLOT(exportFile()));
         connect(removeAction, SIGNAL(triggered()), this, SLOT(removeFile()));
+        connect(renameAction, SIGNAL(triggered()), this, SLOT(renameFile()));
     }
 
     menu->popup(list->mapToGlobal(pos));
@@ -670,6 +672,26 @@ void MainWindow::removeFile(){
     }
 }
 
+void MainWindow::renameFile(){
+    QString oldname = list->selectedItems().first()->text();
+    QString newname = QInputDialog::getText(this,
+                                            tr("Rename"),
+                                            tr("Please input the new name of %1").arg(oldname));
+
+    if(newname.isEmpty() || newname == oldname)
+        return;
+
+    QString from = QString("%1/%2").arg(pathLabel->text()).arg(oldname);
+    QString to = QString("%1/%2").arg(pathLabel->text()).arg(newname);
+    afc_error_t result = afc_rename_path(afc, from.toUtf8().data(), to.toUtf8().data());
+    if(result == AFC_E_SUCCESS)
+        showMessage(tr("Rename success"));
+    else
+        showWarning(tr("Rename failed!"));
+
+    reload();
+}
+
 void MainWindow::makeDirectory(){
     QString dirname = QInputDialog::getText(this,
                                             tr("Make directory"),
@@ -688,7 +710,7 @@ void MainWindow::makeDirectory(){
 }
 
 void MainWindow::exportFile(FileInfo *info){
-    QString filename = QFileDialog::getSaveFileName(this, tr("Select save file name"));
+    QString filename = QFileDialog::getSaveFileName(this, tr("Select save file name"), info->filename);
     if(filename.isEmpty())
         return;
 

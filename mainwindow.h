@@ -36,6 +36,7 @@ private slots:
     void importFile();
     void exportFile();
     void removeFile();
+    void renameFile();
     void makeDirectory();
     void onItemDoubleClicked(QListWidgetItem *item);
     void showFileInfo(QListWidgetItem *item);
