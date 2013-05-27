@@ -309,10 +309,10 @@ void MainWindow::installApp(){
 
     QFileInfo info(ipaFile);
     QString afc2Path = QString("/var/mobile/Media/PublicStaging/%1").arg(info.fileName());
-    QString afcPath = QString("/PublicStaging/%1").arg(info.fileName());
-    if(!copyFile(ipaFile, afc2Path))
-        return;
+    copyFile(ipaFile, afc2Path)->setShouldInstall(true);
+}
 
+void MainWindow::installIPAFile(const QString &afcPath){
     InstallThread *thread = new InstallThread(instproxy, afcPath);
     connect(thread, SIGNAL(started()), this, SLOT(onInstallStarted()));
     connect(thread, SIGNAL(finished(int)), this, SLOT(onInstallFinished(int)));
@@ -594,42 +594,95 @@ void MainWindow::onItemDoubleClicked(QListWidgetItem *item){
     }
 }
 
-bool MainWindow::copyFile(const QString &pcPath, const QString &devicePath){
+CopyThread::CopyThread(afc_client_t afc, const QString &pcPath, const QString &devicePath)
+    :afc(afc), pcPath(pcPath), devicePath(devicePath), shouldInstall(false)
+{
+
+}
+
+QString CopyThread::afcPath() const{
+    QFileInfo info(pcPath);
+    return QString("PublicStaging/%1").arg(info.fileName());
+}
+
+void CopyThread::run(){
     QFile file(pcPath);
-    if(!file.open(QIODevice::ReadOnly))
-        return false;
+    if(!file.open(QIODevice::ReadOnly)){
+        emit copyFinished(1);
+        return;
+    }
 
     uint64_t handle = 0;
     afc_file_open(afc, devicePath.toUtf8().data(), AFC_FOPEN_WRONLY, &handle);
-    if(handle == 0)
-        return false;
-
-    uint32_t bytes_written;
+    if(handle == 0){
+        emit copyFinished(2);
+        return;
+    }
 
     const int blockSize = 10 * 1024; // 10k
 
-    if(file.size() > blockSize){
-        progressLabel->setText(tr("Copy file from %1 to %2").arg(pcPath).arg(devicePath));
-        progressBar->setRange(0, file.size()/blockSize);
+    const QString prompt = tr("Copy %1 to %2").arg(pcPath).arg(devicePath);
+    const int blockCount = file.size() / blockSize;
 
-        progressLabel->show();
-        progressBar->show();
-    }
+    emit copyStarted(prompt, blockCount);
 
     for(int i=0; !file.atEnd(); i++){
-        if(progressBar->isVisible())
-            progressBar->setValue(i);
+        emit copyProgress(i);
 
         QByteArray data = file.read(blockSize);
-        afc_file_write(afc, handle, data.data(), data.size(), &bytes_written);
+        uint32_t bytes_written;
+        afc_error_t result = afc_file_write(afc, handle, data.data(), data.size(), &bytes_written);
+        if(result != AFC_E_SUCCESS){
+            afc_file_close(afc, handle);
+            emit copyFinished(result);
+            break;
+        }
     }
 
-    if(progressLabel->isVisible()){
-        progressLabel->hide();
-        progressBar->hide();
+    emit copyFinished(afc_file_close(afc, handle));
+}
+
+CopyThread *MainWindow::copyFile(const QString &pcPath, const QString &devicePath){
+    CopyThread *thread = new CopyThread(afc, pcPath, devicePath);
+
+    progressLabel->setText(tr("Copy %1 to %2").arg(pcPath).arg(devicePath));
+
+    connect(thread, SIGNAL(copyStarted(QString,int)), this, SLOT(onCopyStarted(QString,int)));
+    connect(thread, SIGNAL(copyProgress(int)), progressBar, SLOT(setValue(int)));
+    connect(thread, SIGNAL(copyFinished(int)), this, SLOT(onCopyFinished(int)));
+
+    thread->start();
+
+    return thread;
+}
+
+void MainWindow::onCopyStarted(const QString &prompt, int blockCount){
+    progressLabel->setText(prompt);
+    progressBar->setRange(0, blockCount);
+    progressBar->setValue(0);
+
+    progressLabel->show();
+    progressBar->show();
+}
+
+void MainWindow::onCopyFinished(int result){
+    if(result != 0){
+        showWarning(tr("Copy failed with result %1").arg(result));
     }
 
-    return afc_file_close(afc, handle) == AFC_E_SUCCESS;
+    progressLabel->hide();
+    progressBar->hide();
+
+
+    CopyThread *thread = qobject_cast<CopyThread *>(sender());
+    if(thread){
+        if(thread->isShouldInstall())
+            installIPAFile(thread->afcPath());
+        else
+            reload();
+
+        thread->deleteLater();
+    }
 }
 
 void MainWindow::importFile(){
@@ -640,8 +693,8 @@ void MainWindow::importFile(){
     QFileInfo info(filename);
     QString filepath = getAbsoulteFilePath(info.fileName());
 
-    if(copyFile(filename, filepath))
-        reload();
+    CopyThread *thread = copyFile(filename, filepath);
+    connect(thread, SIGNAL(copySucceeded()), this, SLOT(reload()));
 }
 
 void MainWindow::reload(){

@@ -14,6 +14,7 @@
 #include "libimobiledevice/installation_proxy.h"
 
 struct FileInfo;
+class CopyThread;
 
 class MainWindow : public QMainWindow
 {
@@ -48,8 +49,12 @@ private slots:
     void showApplications();
     void installApp();
     void archiveApp();
+
     void onInstallStarted();
     void onInstallFinished(int result);
+
+    void onCopyStarted(const QString &prompt, int blockCount);
+    void onCopyFinished(int result);
 
 private:
     idevice_t device;
@@ -76,7 +81,8 @@ private:
     void showWarning(const QString &message);
     void showInfo(const QString &message);
     bool setupInstproxy();
-    bool copyFile(const QString &pcPath, const QString &devicePath);
+    CopyThread *copyFile(const QString &pcPath, const QString &devicePath);
+    void installIPAFile(const QString &afcPath);
 
 signals:
     void deviceAdded();
@@ -100,6 +106,37 @@ protected:
 
 signals:
     void finished(int result);
+};
+
+class CopyThread: public QThread{
+    Q_OBJECT
+
+public:
+    CopyThread(afc_client_t afc, const QString &pcPath, const QString &devicePath);
+
+    void setShouldInstall(bool should){
+        shouldInstall = should;
+    }
+
+    bool isShouldInstall() const{
+        return shouldInstall;
+    }
+
+    QString afcPath() const;
+
+private:
+    afc_client_t afc;
+    QString pcPath;
+    QString devicePath;
+    bool shouldInstall;
+
+protected:
+    virtual void run();
+
+signals:
+    void copyProgress(int value);
+    void copyStarted(const QString &prompt, int blockCount);
+    void copyFinished(int result);
 };
 
 #endif // MAINWINDOW_H
