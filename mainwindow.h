@@ -14,7 +14,7 @@
 #include "libimobiledevice/installation_proxy.h"
 
 struct FileInfo;
-class ImportThread;
+class CopyThread;
 
 class MainWindow : public QMainWindow
 {
@@ -76,12 +76,11 @@ private:
     bool getFileInfo(const QString &filename, FileInfo *info);
     QPixmap getIconPixmap(FileInfo *info);
     QString getAbsoulteFilePath(const QString &filename) const;
-    void exportFile(FileInfo *info);
     void setCurrentPath(const QString &path);
     void showWarning(const QString &message);
     void showInfo(const QString &message);
-    bool setupInstproxy();
-    ImportThread *importFile(const QString &pcPath, const QString &devicePath);
+    bool setupInstproxy();    
+    void copyFile(const QString &pcPath, const QString &devicePath, int operation);
     void installIPAFile(const QString &afcPath);
 
 signals:
@@ -108,18 +107,20 @@ signals:
     void finished(int result);
 };
 
-class ImportThread: public QThread{
+class CopyThread: public QThread{
     Q_OBJECT
 
 public:
-    ImportThread(afc_client_t afc, const QString &pcPath, const QString &devicePath);
+    enum Operation{
+        ImportFile,
+        ExportFile,
+        InstallIPA
+    };
 
-    void setShouldInstall(bool should){
-        shouldInstall = should;
-    }
+    CopyThread(afc_client_t afc, const QString &pcPath, const QString &devicePath, Operation operation);
 
-    bool isShouldInstall() const{
-        return shouldInstall;
+    enum Operation getOperation() const{
+        return operation;
     }
 
     QString afcPath() const;
@@ -129,6 +130,12 @@ private:
     QString pcPath;
     QString devicePath;
     bool shouldInstall;
+    enum Operation operation;
+
+    void importFile();
+    void exportFile();
+
+    const static int blockSize = 10 * 1024; // 10k
 
 protected:
     virtual void run();
