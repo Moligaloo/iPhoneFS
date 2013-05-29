@@ -303,9 +303,6 @@ void MainWindow::onInstallFinished(int result){
     }else{
         showWarning(tr("Install failed! error code = %1").arg(result));
     }
-
-    InstallThread *thread = qobject_cast<InstallThread *>(sender());
-    thread->deleteLater();
 }
 
 void MainWindow::installApp(){
@@ -331,6 +328,7 @@ void MainWindow::installIPAFile(const QString &afcPath){
     InstallThread *thread = new InstallThread(instproxy, afcPath);
     connect(thread, SIGNAL(started()), this, SLOT(onInstallStarted()));
     connect(thread, SIGNAL(finished(int)), this, SLOT(onInstallFinished(int)));
+    connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
 
     thread->start();
 }
